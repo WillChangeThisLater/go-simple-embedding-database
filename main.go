@@ -15,7 +15,7 @@ import (
 )
 
 type MockEmbedder struct {
-	id string
+	Id string `json:"id"`
 }
 
 func (e MockEmbedder) Embed(blob []byte) ([]float64, error) {
@@ -23,22 +23,22 @@ func (e MockEmbedder) Embed(blob []byte) ([]float64, error) {
 }
 
 type HuggingFaceEmbedder struct {
-	id      string
-	modelId string
+	Id      string `json:"id"`
+	ModelId string `json:"model_id"`
+}
+
+type HuggingFaceOptions struct {
+	UseCache     bool `json:"use_cache"`
+	WaitForModel bool `json:"wait_for_model"`
+}
+
+type HuggingFaceRequestBody struct {
+	Inputs []string           `json:"inputs"`
+	Value  HuggingFaceOptions `json:"options"`
 }
 
 func (e HuggingFaceEmbedder) Embed(blob []byte) ([]float64, error) {
-	modelId := e.modelId
-
-	type HuggingFaceOptions struct {
-		UseCache     bool `json:"use_cache"`
-		WaitForModel bool `json:"wait_for_model"`
-	}
-
-	type HuggingFaceRequestBody struct {
-		Inputs []string           `json:"inputs"`
-		Value  HuggingFaceOptions `json:"options"`
-	}
+	modelId := e.ModelId
 
 	apiKey := os.Getenv("HUGGING_FACE_API_KEY")
 	if apiKey == "" {
@@ -71,6 +71,8 @@ func (e HuggingFaceEmbedder) Embed(blob []byte) ([]float64, error) {
 		panic(err)
 	}
 
+	// TODO: I copied this over from another module. Fix it.
+	//
 	// Check the status code
 	//
 	// If wait_for_model is set to False and the model is first loading up,
@@ -118,6 +120,9 @@ func cosineSimilarity(x, y []float64) float64 {
 	return result
 }
 
+// TODO: if there's a way to refactor this, do it. It's incredibly ugly.
+// Specifically, I don't have a good way to pluck the max N elements
+// from a list
 func (db MockDataBase) Query(collectionId string, query []byte, n_greatest int) (*[]Embedding, error) {
 	collection, err := db.GetCollection(collectionId)
 	if err != nil {
@@ -151,6 +156,7 @@ func (db MockDataBase) Query(collectionId string, query []byte, n_greatest int) 
 	slices.Sort(distances)
 	slices.Reverse(distances)
 
+	// this is an ugly hack to deal with potential duplicate values
 	nthGreatestSimilarity := distances[n_greatest-1]
 	if nthGreatestSimilarity == distances[n_greatest] {
 		numPicked := 0
@@ -182,6 +188,7 @@ func (db MockDataBase) Query(collectionId string, query []byte, n_greatest int) 
 		}
 	}
 
+	// even the straightforward case is a little ugly
 	for embeddingId, distance := range embeddingSimilarities {
 		if distance >= nthGreatestSimilarity {
 			embedding, err := collection.GetEmbedding(embeddingId)
@@ -198,12 +205,8 @@ func (db MockDataBase) Query(collectionId string, query []byte, n_greatest int) 
 }
 
 type MockDataBase struct {
-	mutex       *sync.Mutex
+	mutex       *sync.Mutex // TODO: leverage this
 	collections map[string]Collection
-}
-
-type Embeddings struct {
-	embeddings map[string]Embedding
 }
 
 func (db MockDataBase) AddEmbedding(collectionId string, embedding *Embedding) error {
@@ -277,15 +280,6 @@ func (db MockDataBase) GetCollections() map[string]Collection {
 	return db.collections
 }
 
-type QueryResponse struct {
-	similarity float64
-	embedder   Embedder
-}
-
-func (e MockEmbedder) Id() string {
-	return e.id
-}
-
 type Embedder interface {
 	Embed(blob []byte) ([]float64, error)
 }
@@ -297,6 +291,7 @@ type Embedding struct {
 	id        string
 }
 
+// TODO: do the ... thing with the embeddings too
 func (e Embedding) String() string {
 	defaultBlobLookahead := min(100, len(e.blob))
 	defaultBlob := string(e.blob[:defaultBlobLookahead])
