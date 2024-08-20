@@ -129,15 +129,15 @@ func (db MockDataBase) Query(collectionId string, query []byte, n_greatest int) 
 		return nil, err
 	}
 
-	embedder := collection.embedder
+	embedder := collection.Embedder
 	queryEmbedding, err := embedder.Embed(query)
 	if err != nil {
 		return nil, err
 	}
 
-	if len(collection.embeddings) <= n_greatest {
+	if len(collection.Embeddings) <= n_greatest {
 		embeddings := make([]Embedding, 0)
-		for _, embedding := range collection.embeddings {
+		for _, embedding := range collection.Embeddings {
 			embeddings = append(embeddings, embedding)
 		}
 		return &embeddings, nil
@@ -146,8 +146,8 @@ func (db MockDataBase) Query(collectionId string, query []byte, n_greatest int) 
 	mostSimilarEmbeddings := make([]Embedding, 0)
 	embeddingSimilarities := make(map[string]float64)
 
-	for embeddingId, embedding := range collection.embeddings {
-		embeddingSimilarities[embeddingId] = cosineSimilarity(queryEmbedding, embedding.embedding)
+	for embeddingId, embedding := range collection.Embeddings {
+		embeddingSimilarities[embeddingId] = cosineSimilarity(queryEmbedding, embedding.Embedding)
 	}
 	distances := make([]float64, 0)
 	for _, distance := range embeddingSimilarities {
@@ -205,8 +205,8 @@ func (db MockDataBase) Query(collectionId string, query []byte, n_greatest int) 
 }
 
 type MockDataBase struct {
-	mutex       *sync.Mutex // TODO: leverage this
-	collections map[string]Collection
+	mutex       *sync.Mutex           // TODO: leverage this
+	Collections map[string]Collection `json:"collections"`
 }
 
 func (db MockDataBase) AddEmbedding(collectionId string, embedding *Embedding) error {
@@ -234,26 +234,26 @@ func (db MockDataBase) DeleteEmbedding(collectionId string, embeddingId string) 
 }
 
 func (db MockDataBase) AddCollection(collection *Collection) error {
-	_, ok := db.collections[collection.id]
+	_, ok := db.Collections[collection.Id]
 	if ok {
-		err := errors.New(fmt.Sprintf("Cannot create collection %s: a collection with id %s already exists", collection.id, collection.id))
+		err := errors.New(fmt.Sprintf("Cannot create collection %s: a collection with id %s already exists", collection.Id, collection.Id))
 		return err
 	} else {
 		db.mutex.Lock()
 		defer db.mutex.Unlock()
-		db.collections[collection.id] = *collection
+		db.Collections[collection.Id] = *collection
 	}
 	return nil
 }
 
 func (db MockDataBase) isCollectionInDB(collectionId string) bool {
-	collections := db.collections
+	collections := db.Collections
 	_, ok := collections[collectionId]
 	return ok
 }
 
 func (db MockDataBase) GetCollection(collectionId string) (*Collection, error) {
-	collection, ok := db.collections[collectionId]
+	collection, ok := db.Collections[collectionId]
 	if ok {
 		return &collection, nil
 	}
@@ -261,11 +261,11 @@ func (db MockDataBase) GetCollection(collectionId string) (*Collection, error) {
 }
 
 func (db MockDataBase) DeleteCollection(collectionId string) error {
-	_, ok := db.collections[collectionId]
+	_, ok := db.Collections[collectionId]
 	if ok {
 		db.mutex.Lock()
 		defer db.mutex.Unlock()
-		delete(db.collections, collectionId)
+		delete(db.Collections, collectionId)
 	} else {
 		err := errors.New(fmt.Sprintf("Cannot delete collection %s: does not exist", collectionId))
 		return err
@@ -277,7 +277,7 @@ func (db MockDataBase) GetCollections() map[string]Collection {
 	// I think the locking here is needed?
 	db.mutex.Lock()
 	defer db.mutex.Unlock()
-	return db.collections
+	return db.Collections
 }
 
 type Embedder interface {
@@ -285,52 +285,58 @@ type Embedder interface {
 }
 
 type Embedding struct {
-	embedding []float64
-	embedder  Embedder
-	blob      []byte
-	id        string
+	Embedding []float64 `json:"embedding"`
+	Embedder  Embedder  `json:"embedder"`
+	Blob      []byte    `json:"blob"`
+	Id        string    `json:"id"`
 }
 
 // TODO: do the ... thing with the embeddings too
 func (e Embedding) String() string {
-	defaultBlobLookahead := min(100, len(e.blob))
-	defaultBlob := string(e.blob[:defaultBlobLookahead])
-	if len(e.blob) > 20 {
+	defaultBlobLookahead := min(100, len(e.Blob))
+	defaultBlob := string(e.Blob[:defaultBlobLookahead])
+	if len(e.Blob) > 20 {
 		defaultBlob += "..."
 	}
-	return fmt.Sprintf("Embedding{embedding: %f, embedder: %s, blob: %v, id: %s}", e.embedding, e.embedder, defaultBlob, e.id)
+	return fmt.Sprintf("Embedding{embedding: %f, embedder: %s, blob: %v, id: %s}", e.Embedding, e.Embedder, defaultBlob, e.Id)
 }
 
 type Collection struct {
-	id         string
-	embedder   Embedder
-	embeddings map[string]Embedding
+	Id         string               `json:"id"`
+	Embedder   Embedder             `json:"embedder"`
+	Embeddings map[string]Embedding `json:"embeddings"`
 }
 
 func (c Collection) String() string {
-	return fmt.Sprintf("Collection{collection.id: %s, embedder: %v}", c.id, c.embedder)
+	return fmt.Sprintf("Collection{collection.Id: %s, embedder: %v}", c.Id, c.Embedder)
 }
 
 func (collection Collection) AddEmbedding(embedding *Embedding) error {
-	_, ok := collection.embeddings[embedding.id]
+	_, ok := collection.Embeddings[embedding.Id]
 	if ok {
-		return errors.New(fmt.Sprintf("Embedding %s already exists in collection %s\n", embedding.id, collection.id))
+		return errors.New(fmt.Sprintf("Embedding %s already exists in collection %s\n", embedding.Id, collection.Id))
 	}
-	collection.embeddings[embedding.id] = *embedding
+	if !reflect.DeepEqual(collection.Embedder, embedding.Embedder) {
+		return errors.New(fmt.Sprintf("Embedding embedder %v != collection embedder %v", embedding.Embedder, collection.Embedder))
+	}
+	if embedding.Embedding == nil {
+		return errors.New(fmt.Sprintf("Embedding for %v is null", embedding))
+	}
+	collection.Embeddings[embedding.Id] = *embedding
 	return nil
 }
 
 func (collection Collection) DeleteEmbedding(embeddingId string) error {
-	_, ok := collection.embeddings[embeddingId]
+	_, ok := collection.Embeddings[embeddingId]
 	if ok {
-		delete(collection.embeddings, embeddingId)
+		delete(collection.Embeddings, embeddingId)
 		return nil
 	}
-	return errors.New(fmt.Sprintf("Could not delete embedding %s from collection %s: embedding not found in collection", embeddingId, collection.id))
+	return errors.New(fmt.Sprintf("Could not delete embedding %s from collection %s: embedding not found in collection", embeddingId, collection.Id))
 }
 
 func (collection Collection) GetEmbedding(embeddingId string) (*Embedding, error) {
-	embedding, ok := collection.embeddings[embeddingId]
+	embedding, ok := collection.Embeddings[embeddingId]
 	if !ok {
 		return nil, errors.New(fmt.Sprintf("Could not get embedding - embedding with ID %s does not exist in collection", embeddingId))
 	}
@@ -342,14 +348,14 @@ func makeEmbedding(embedder Embedder, blob []byte, id string) (*Embedding, error
 	if err != nil {
 		return nil, err
 	}
-	return &Embedding{embedding: embedding, embedder: embedder, blob: blob, id: id}, nil
+	return &Embedding{Embedding: embedding, Embedder: embedder, Blob: blob, Id: id}, nil
 }
 
 func main() {
-	embedder := Embedder(MockEmbedder{id: "mock-embedder"})
+	mockEmbedder := Embedder(MockEmbedder{Id: "mock-embedder"})
 
-	collection := Collection{id: "test-collection-api", embedder: embedder, embeddings: make(map[string]Embedding)}
-	db := MockDataBase{mutex: &sync.Mutex{}, collections: make(map[string]Collection)}
+	collection := Collection{Id: "test-collection-api", Embedder: mockEmbedder, Embeddings: make(map[string]Embedding)}
+	db := MockDataBase{mutex: &sync.Mutex{}, Collections: make(map[string]Collection)}
 
 	// make sure the collection API works
 	err := db.AddCollection(&collection)
@@ -360,41 +366,41 @@ func main() {
 	if err == nil {
 		fmt.Printf("Should not have been able to create collection %v as it already exists\n", collection)
 	}
-	if !db.isCollectionInDB(collection.id) {
+	if !db.isCollectionInDB(collection.Id) {
 		fmt.Printf("isCollectionInDB(%s) is reporting collection is not in database when it should be", collection)
 	}
-	_, err = db.GetCollection(collection.id)
+	_, err = db.GetCollection(collection.Id)
 	if err != nil {
-		fmt.Printf("db.getCollection(%s) should have been able to get a collection", collection.id)
+		fmt.Printf("db.getCollection(%s) should have been able to get a collection", collection.Id)
 	}
 
-	if len(db.collections) != 1 {
-		fmt.Printf("Database %v should have only 1 collection (has %d)\n", db, len(db.collections))
+	if len(db.Collections) != 1 {
+		fmt.Printf("Database %v should have only 1 collection (has %d)\n", db, len(db.Collections))
 	}
-	_, ok := db.collections[collection.id]
+	_, ok := db.Collections[collection.Id]
 	if !ok {
 		fmt.Printf("Collection has the wrong name\n")
 	}
 
-	err = db.DeleteCollection(collection.id)
+	err = db.DeleteCollection(collection.Id)
 	if err != nil {
 		fmt.Printf("Could not delete collection %s: %v\n", collection, err)
 	}
-	err = db.DeleteCollection(collection.id)
+	err = db.DeleteCollection(collection.Id)
 	if err == nil {
 		fmt.Printf("Should not have been able to delete collection %v as it does not exist\n", collection)
 	}
-	if db.isCollectionInDB(collection.id) {
+	if db.isCollectionInDB(collection.Id) {
 		fmt.Printf("isCollectionInDB(%s) is reporting collection is in database when it shouldn't be", collection)
 	}
-	_, err = db.GetCollection(collection.id)
+	_, err = db.GetCollection(collection.Id)
 	if err == nil {
-		fmt.Printf("db.GetCollection(%s) should have returned an error", collection.id)
+		fmt.Printf("db.GetCollection(%s) should have returned an error", collection.Id)
 	}
 
 	// now that we know the collection API works, make sure the embedding API works
-	collection = Collection{id: "test-embedding-api-single-vector", embedder: embedder, embeddings: make(map[string]Embedding)}
-	embedding, err := makeEmbedding(embedder, []byte("hello, world!"), "hello-world")
+	collection = Collection{Id: "test-embedding-api-single-vector", Embedder: mockEmbedder, Embeddings: make(map[string]Embedding)}
+	embedding, err := makeEmbedding(mockEmbedder, []byte("hello, world!"), "hello-world")
 	if err != nil {
 		fmt.Printf("Could not manually create embedding: %v\n", err)
 	}
@@ -402,30 +408,39 @@ func main() {
 	if err != nil {
 		fmt.Printf("Could not add collection %v to the database: %v\n", collection, err)
 	}
-	err = db.AddEmbedding(collection.id, embedding)
+	err = db.AddEmbedding(collection.Id, embedding)
 	if err != nil {
 		fmt.Printf("Could not add embedding %v to the database: %v\n", embedding, err)
 	}
-	result, err := db.GetEmbedding(collection.id, embedding.id)
+	err = db.AddEmbedding(collection.Id, &Embedding{Embedding: nil, Embedder: mockEmbedder, Blob: []byte("hey there"), Id: "bad-embedding"})
+	if err == nil {
+		fmt.Printf("Should not have been able to add embedding with nil embedded values to collection\n")
+	}
+	//mockEmbedder := Embedder(MockEmbedder{Id: "mock-embedder"})
+	err = db.AddEmbedding(collection.Id, &Embedding{Embedding: nil, Embedder: Embedder(MockEmbedder{Id: "mock-embedder-2"}), Blob: []byte("hey there"), Id: "bad-embedding"})
+	if err == nil {
+		fmt.Printf("Should not have been able to add embedding where collection embedder does not match embedding's embedder\n")
+	}
+	result, err := db.GetEmbedding(collection.Id, embedding.Id)
 	if err != nil {
 		fmt.Printf("Could not add embedding %v to the database: %v\n", embedding, err)
 	}
 	if !reflect.DeepEqual(result, embedding) {
-		fmt.Printf("GetEmbedding(%s, %s) returned unexpected embedding (expected %v, got %v)\n", collection.id, embedding.id, embedding, result)
+		fmt.Printf("GetEmbedding(%s, %s) returned unexpected embedding (expected %v, got %v)\n", collection.Id, embedding.Id, embedding, result)
 	}
-	err = db.AddEmbedding(collection.id, embedding)
+	err = db.AddEmbedding(collection.Id, embedding)
 	if err == nil {
-		fmt.Printf("db.AddEmedding(%s, %v) should not have let me add a duplicate embedding\n", collection.id, embedding)
+		fmt.Printf("db.AddEmedding(%s, %v) should not have let me add a duplicate embedding\n", collection.Id, embedding)
 	}
-	err = db.DeleteEmbedding(collection.id, embedding.id)
+	err = db.DeleteEmbedding(collection.Id, embedding.Id)
 	if err != nil {
-		fmt.Printf("db.DeleteEmbedding(%s, %s) should have let me delete embedding\n", collection.id, embedding.id)
+		fmt.Printf("db.DeleteEmbedding(%s, %s) should have let me delete embedding\n", collection.Id, embedding.Id)
 	}
-	err = db.DeleteEmbedding(collection.id, embedding.id)
+	err = db.DeleteEmbedding(collection.Id, embedding.Id)
 	if err == nil {
-		fmt.Printf("db.DeleteEmbedding(%s, %s) should not have let me delete embedding\n", collection.id, embedding.id)
+		fmt.Printf("db.DeleteEmbedding(%s, %s) should not have let me delete embedding\n", collection.Id, embedding.Id)
 	}
-	collection = Collection{id: "test-embedding-api-many-vectors", embedder: embedder, embeddings: make(map[string]Embedding)}
+	collection = Collection{Id: "test-embedding-api-many-vectors", Embedder: mockEmbedder, Embeddings: make(map[string]Embedding)}
 	err = db.AddCollection(&collection)
 	if err != nil {
 		fmt.Printf("Could not add collection %v to the database: %v\n", collection, err)
@@ -437,17 +452,17 @@ func main() {
 	for pageNum := range embeddingsToGenerate {
 		blob := []byte(fmt.Sprintf("Content for page %d\n", pageNum))
 		id := fmt.Sprintf("/page/%d", pageNum)
-		embedding, err := makeEmbedding(embedder, blob, id)
+		embedding, err := makeEmbedding(mockEmbedder, blob, id)
 		if err != nil {
 			fmt.Printf("Could not create embedding: %v", err)
 		}
 		embeddings = append(embeddings, *embedding)
 	}
 	for _, embedding := range embeddings {
-		db.AddEmbedding(collection.id, &embedding)
+		db.AddEmbedding(collection.Id, &embedding)
 	}
-	if len(collection.embeddings) != embeddingsToGenerate {
-		fmt.Printf("Embedding count for collection %s is off (expected %d, got %d)", collection.id, embeddingsToGenerate, len(collection.embeddings))
+	if len(collection.Embeddings) != embeddingsToGenerate {
+		fmt.Printf("Embedding count for collection %s is off (expected %d, got %d)", collection.Id, embeddingsToGenerate, len(collection.Embeddings))
 	}
 
 	// now that we have a bunch of embeddings in the database, let's check the query methods
@@ -461,15 +476,15 @@ func main() {
 	}
 
 	for _, embedding := range embeddings {
-		err = db.DeleteEmbedding(collection.id, embedding.id)
+		err = db.DeleteEmbedding(collection.Id, embedding.Id)
 		if err != nil {
-			fmt.Printf("Could not delete embedding %s from collection %s", embedding.id, collection.id)
+			fmt.Printf("Could not delete embedding %s from collection %s", embedding.Id, collection.Id)
 		}
 	}
 
 	// great! now let's try embedding something real
 	// this should return with no issues...
-	hfEmbedder := HuggingFaceEmbedder{id: "huggingFace", modelId: "sentence-transformers/all-MiniLM-L12-v2"}
+	hfEmbedder := HuggingFaceEmbedder{Id: "huggingFace", ModelId: "sentence-transformers/all-MiniLM-L12-v2"}
 	_, err = hfEmbedder.Embed([]byte("George Washington was the greatest president of them all"))
 	if err != nil {
 		fmt.Printf("Hugging face embedder could not embed blob: %v", err)
@@ -486,7 +501,7 @@ func main() {
 	vector1, _ := makeEmbedding(hfEmbedder, []byte("George Washington might be the greatest president of them all"), "/page/gw")
 	vector2, _ := makeEmbedding(hfEmbedder, []byte("all work and no play makes jack a dull boy all work and no play makes jack a dull boy all work and..."), "/page/shining")
 	vector3, _ := makeEmbedding(hfEmbedder, []byte("What are we having for supper?"), "/page/supper")
-	collection = Collection{id: "test-cosine-similarity", embedder: hfEmbedder, embeddings: make(map[string]Embedding)}
+	collection = Collection{Id: "test-cosine-similarity", Embedder: hfEmbedder, Embeddings: make(map[string]Embedding)}
 	err = db.AddCollection(&collection)
 	if err != nil {
 		fmt.Printf("Could not create collection: %v", err)
