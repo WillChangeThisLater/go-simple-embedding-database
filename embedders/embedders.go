@@ -10,6 +10,10 @@ import (
 	"os"
 )
 
+type Embedder interface {
+	Embed(blob []byte) ([]float64, error)
+}
+
 type MockEmbedder struct {
 	Id string `json:"id"`
 }
@@ -23,14 +27,14 @@ type HuggingFaceEmbedder struct {
 	ModelId string `json:"model_id"`
 }
 
-type HuggingFaceOptions struct {
+type HuggingFaceRequestOptions struct {
 	UseCache     bool `json:"use_cache"`
 	WaitForModel bool `json:"wait_for_model"`
 }
 
 type HuggingFaceRequestBody struct {
-	Inputs []string           `json:"inputs"`
-	Value  HuggingFaceOptions `json:"options"`
+	Inputs []string                  `json:"inputs"`
+	Value  HuggingFaceRequestOptions `json:"options"`
 }
 
 func (e HuggingFaceEmbedder) Embed(blob []byte) ([]float64, error) {
@@ -42,7 +46,7 @@ func (e HuggingFaceEmbedder) Embed(blob []byte) ([]float64, error) {
 	}
 	endpoint := "https://api-inference.huggingface.co/pipeline/feature-extraction"
 
-	body := HuggingFaceRequestBody{Inputs: []string{string(blob)}, Value: HuggingFaceOptions{UseCache: true, WaitForModel: true}}
+	body := HuggingFaceRequestBody{Inputs: []string{string(blob)}, Value: HuggingFaceRequestOptions{UseCache: true, WaitForModel: true}}
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -88,8 +92,4 @@ func (e HuggingFaceEmbedder) Embed(blob []byte) ([]float64, error) {
 
 	vector := embedding[0]
 	return vector, nil
-}
-
-type Embedder interface {
-	Embed(blob []byte) ([]float64, error)
 }

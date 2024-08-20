@@ -2,7 +2,7 @@ package utils
 
 import "math"
 
-func cosineSimilarity(x, y []float64) float64 {
+func CosineSimilarity(x, y []float64) float64 {
 	var sum, s1, s2 float64
 	for i := 0; i < len(x); i++ {
 		sum += x[i] * y[i]

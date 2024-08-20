@@ -2,13 +2,15 @@ package embeddings
 
 import (
 	"fmt"
+
+	embedders "go-simple-embedding-database/embedders"
 )
 
 type Embedding struct {
-	Embedding []float64 `json:"embedding"`
-	Embedder  Embedder  `json:"embedder"`
-	Blob      []byte    `json:"blob"`
-	Id        string    `json:"id"`
+	Embedding []float64          `json:"embedding"`
+	Embedder  embedders.Embedder `json:"embedder"`
+	Blob      []byte             `json:"blob"`
+	Id        string             `json:"id"`
 }
 
 // TODO: do the ... thing with the embeddings too
@@ -21,7 +23,7 @@ func (e Embedding) String() string {
 	return fmt.Sprintf("Embedding{embedding: %f, embedder: %s, blob: %v, id: %s}", e.Embedding, e.Embedder, defaultBlob, e.Id)
 }
 
-func MakeEmbedding(embedder Embedder, blob []byte, id string) (*Embedding, error) {
+func MakeEmbedding(embedder embedders.Embedder, blob []byte, id string) (*Embedding, error) {
 	embedding, err := embedder.Embed(blob)
 	if err != nil {
 		return nil, err
