@@ -3,12 +3,10 @@ package database
 import (
 	"errors"
 	"fmt"
-	"slices"
 	"sync"
 
 	collection "go-simple-embedding-database/collection"
-	embeddings "go-simple-embedding-database/embeddings"
-	utils "go-simple-embedding-database/utils"
+	records "go-simple-embedding-database/records"
 )
 
 type DataBase interface {
@@ -16,127 +14,54 @@ type DataBase interface {
 	DeleteCollection(collectionId string) error
 	GetCollection(collectionId string) (*collection.Collection, error)
 
-	AddEmbedding(collectionId string, embedding *embeddings.Embedding) error
-	GetEmbedding(collectionId string, embeddingId string) error
-	DeleteEmbedding(collectionId string, embeddingId string) error
+	AddRecord(collectionId string, record *records.Record) error
+	GetRecord(collectionId string, recordId string) error
+	DeleteRecord(collectionId string, recordId string) error
 
-	Query(collectionId string, query []byte, n_greatest int) []*embeddings.Embedding
+	Query(collectionId string, query []byte, n_greatest int) []*records.Record
 }
 
 // TODO: if there's a way to refactor this, do it. It's incredibly ugly.
 // Specifically, I don't have a good way to pluck the max N elements
 // from a list
-func (db MockDataBase) Query(collectionId string, query []byte, n_greatest int) (*[]embeddings.Embedding, error) {
+func (db SimpleDataBase) Query(collectionId string, query []byte, n_greatest int) (*[]records.Record, error) {
 	collection, err := db.GetCollection(collectionId)
 	if err != nil {
 		return nil, err
 	}
-
-	embedder := collection.Embedder
-	queryEmbedding, err := embedder.Embed(query)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(collection.Embeddings) <= n_greatest {
-		embeddings := make([]embeddings.Embedding, 0)
-		for _, embedding := range collection.Embeddings {
-			embeddings = append(embeddings, embedding)
-		}
-		return &embeddings, nil
-	}
-
-	mostSimilarEmbeddings := make([]embeddings.Embedding, 0)
-	embeddingSimilarities := make(map[string]float64)
-
-	for embeddingId, embedding := range collection.Embeddings {
-		embeddingSimilarities[embeddingId] = utils.CosineSimilarity(queryEmbedding, embedding.Embedding)
-	}
-	distances := make([]float64, 0)
-	for _, distance := range embeddingSimilarities {
-		distances = append(distances, distance)
-	}
-	slices.Sort(distances)
-	slices.Reverse(distances)
-
-	// this is an ugly hack to deal with potential duplicate values
-	nthGreatestSimilarity := distances[n_greatest-1]
-	if nthGreatestSimilarity == distances[n_greatest] {
-		numPicked := 0
-		for embeddingId, distance := range embeddingSimilarities {
-			if distance > nthGreatestSimilarity {
-				embedding, err := collection.GetEmbedding(embeddingId)
-				if err != nil {
-					return nil, err
-				}
-				mostSimilarEmbeddings = append(mostSimilarEmbeddings, *embedding)
-				numPicked += 1
-			}
-		}
-		for embeddingId, distance := range embeddingSimilarities {
-			if distance == nthGreatestSimilarity {
-				embedding, err := collection.GetEmbedding(embeddingId)
-				if err != nil {
-					return nil, err
-				}
-				mostSimilarEmbeddings = append(mostSimilarEmbeddings, *embedding)
-				numPicked += 1
-				if numPicked == n_greatest {
-					if len(mostSimilarEmbeddings) != n_greatest {
-						return nil, errors.New(fmt.Sprintf("matching - len(mostSimilarEmbeddings) != n_greatest (%d != %d)", len(mostSimilarEmbeddings), n_greatest))
-					}
-					return &mostSimilarEmbeddings, nil
-				}
-			}
-		}
-	}
-
-	// even the straightforward case is a little ugly
-	for embeddingId, distance := range embeddingSimilarities {
-		if distance >= nthGreatestSimilarity {
-			embedding, err := collection.GetEmbedding(embeddingId)
-			if err != nil {
-				return nil, err
-			}
-			mostSimilarEmbeddings = append(mostSimilarEmbeddings, *embedding)
-		}
-	}
-	if len(mostSimilarEmbeddings) != n_greatest {
-		return nil, errors.New(fmt.Sprintf("distinct - len(mostSimilarEmbeddings) != n_greatest (%d != %d)", len(mostSimilarEmbeddings), n_greatest))
-	}
-	return &mostSimilarEmbeddings, nil
+	return collection.Query(query, n_greatest)
 }
 
-type MockDataBase struct {
+type SimpleDataBase struct {
 	mutex       *sync.Mutex                      // TODO: leverage this
 	Collections map[string]collection.Collection `json:"collections"`
 }
 
-func (db MockDataBase) AddEmbedding(collectionId string, embedding *embeddings.Embedding) error {
+func (db SimpleDataBase) AddRecord(collectionId string, record *records.Record) error {
 	collection, err := db.GetCollection(collectionId)
 	if err != nil {
 		return err
 	}
-	return collection.AddEmbedding(embedding)
+	return collection.AddRecord(record)
 }
 
-func (db MockDataBase) GetEmbedding(collectionId string, embeddingId string) (*embeddings.Embedding, error) {
+func (db SimpleDataBase) GetRecord(collectionId string, recordId string) (*records.Record, error) {
 	collection, err := db.GetCollection(collectionId)
 	if err != nil {
 		return nil, err
 	}
-	return collection.GetEmbedding(embeddingId)
+	return collection.GetRecord(recordId)
 }
 
-func (db MockDataBase) DeleteEmbedding(collectionId string, embeddingId string) error {
+func (db SimpleDataBase) DeleteRecord(collectionId string, recordId string) error {
 	collection, err := db.GetCollection(collectionId)
 	if err != nil {
 		return err
 	}
-	return collection.DeleteEmbedding(embeddingId)
+	return collection.DeleteRecord(recordId)
 }
 
-func (db MockDataBase) AddCollection(collection *collection.Collection) error {
+func (db SimpleDataBase) AddCollection(collection *collection.Collection) error {
 	_, ok := db.Collections[collection.Id]
 	if ok {
 		err := errors.New(fmt.Sprintf("Cannot create collection %s: a collection with id %s already exists", collection.Id, collection.Id))
@@ -149,13 +74,13 @@ func (db MockDataBase) AddCollection(collection *collection.Collection) error {
 	return nil
 }
 
-func (db MockDataBase) isCollectionInDB(collectionId string) bool {
+func (db SimpleDataBase) isCollectionInDB(collectionId string) bool {
 	collections := db.Collections
 	_, ok := collections[collectionId]
 	return ok
 }
 
-func (db MockDataBase) GetCollection(collectionId string) (*collection.Collection, error) {
+func (db SimpleDataBase) GetCollection(collectionId string) (*collection.Collection, error) {
 	collection, ok := db.Collections[collectionId]
 	if ok {
 		return &collection, nil
@@ -163,7 +88,7 @@ func (db MockDataBase) GetCollection(collectionId string) (*collection.Collectio
 	return nil, errors.New(fmt.Sprintf("Could not get collection - no collection with ID %s exists in the database", collectionId))
 }
 
-func (db MockDataBase) DeleteCollection(collectionId string) error {
+func (db SimpleDataBase) DeleteCollection(collectionId string) error {
 	_, ok := db.Collections[collectionId]
 	if ok {
 		db.mutex.Lock()
@@ -176,7 +101,7 @@ func (db MockDataBase) DeleteCollection(collectionId string) error {
 	return nil
 }
 
-func (db MockDataBase) GetCollections() map[string]collection.Collection {
+func (db SimpleDataBase) GetCollections() map[string]collection.Collection {
 	// I think the locking here is needed?
 	db.mutex.Lock()
 	defer db.mutex.Unlock()
