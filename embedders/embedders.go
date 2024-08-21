@@ -8,22 +8,14 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strings"
 )
 
 type Embedder interface {
 	Embed(blob []byte) ([]float64, error)
 }
 
-type MockEmbedder struct {
-	Id string `json:"id"`
-}
-
-func (e MockEmbedder) Embed(blob []byte) ([]float64, error) {
-	return []float64{1.0, 2.0, 3.0, 4.0, 5.0}, nil
-}
-
 type HuggingFaceEmbedder struct {
-	Id      string `json:"id"`
 	ModelId string `json:"model_id"`
 }
 
@@ -92,4 +84,15 @@ func (e HuggingFaceEmbedder) Embed(blob []byte) ([]float64, error) {
 
 	vector := embedding[0]
 	return vector, nil
+}
+
+func GetEmbedder(name string) (Embedder, error) {
+	switch {
+	// TODO: check if model exists first
+	case strings.HasPrefix(name, "hugging-face"):
+		modelId := strings.TrimPrefix(name, "hugging-face/")
+		return HuggingFaceEmbedder{ModelId: modelId}, nil
+	default:
+		return nil, errors.New("Invalid embedder name")
+	}
 }

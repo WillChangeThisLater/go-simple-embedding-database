@@ -194,7 +194,7 @@ func TestQueryAgainstRealEmbeddings(t *testing.T) {
 	// that the embedder we are calling returns reasonable results.
 	// however, i think it's also reasonable to expect that a semi-decent embedding model
 	// will be able to embed these sentences somewhat appropriately. so i'm leaving the test in
-	hfEmbedder := embedders.HuggingFaceEmbedder{Id: "huggingFace", ModelId: "sentence-transformers/all-MiniLM-L12-v2"}
+	hfEmbedder := embedders.HuggingFaceEmbedder{ModelId: "sentence-transformers/all-MiniLM-L12-v2"}
 	_, err := hfEmbedder.Embed([]byte("George Washington was the greatest president of them all"))
 	if err != nil {
 		t.Errorf("Hugging face embedder could not embed blob: %v", err)
