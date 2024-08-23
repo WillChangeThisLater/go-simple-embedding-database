@@ -16,6 +16,40 @@ func MockEmbed(blob []byte) ([]float64, error) {
 	return []float64{1.0, 2.0, 3.0, 4.0, 5.0}, nil
 }
 
+func TestJSONIO(t *testing.T) {
+	tempFileName := "/tmp/testJSONIO.json"
+	embedders.EmbedderRegister["fake-embedder"] = MockEmbed
+	db := MakeDatabase()
+	coll, err := collection.MakeCollection("collection-1", "fake-embedder")
+	if err != nil {
+		t.Errorf("Could not create collection: %v", err)
+	}
+	record, err := records.MakeRecord("fake-embedder", []byte("hey there"), "record-1")
+	if err != nil {
+		t.Errorf("Could not create record: %v", err)
+	}
+	err = db.AddCollection(coll)
+	if err != nil {
+		t.Errorf("Could not add collection to database: %v", err)
+	}
+	err = db.AddRecord("collection-1", record)
+	if err != nil {
+		t.Errorf("Could not add record to collection: %v", err)
+	}
+	err = db.ToFile(tempFileName)
+	if err != nil {
+		t.Errorf("Could not write database to file: %v", err)
+	}
+	newDB := &SimpleDataBase{}
+	err = newDB.FromFile(tempFileName)
+	if err != nil {
+		t.Errorf("Could not read database from file: %v", err)
+	}
+	if !reflect.DeepEqual(db, newDB) {
+		t.Errorf("Not equal (expected %v, got %v)\n", db, newDB)
+	}
+}
+
 func TestJSON(t *testing.T) {
 	db := MakeDatabase()
 
@@ -55,7 +89,6 @@ func TestJSON(t *testing.T) {
 	if !reflect.DeepEqual(newDB, db) {
 		t.Errorf("Unmarshaled DB not equal (expected %v, got %v)", db, newDB)
 	}
-
 }
 
 func TestDatabaseCollectionAPI(t *testing.T) {

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"sync"
 
 	collection "go-simple-embedding-database/collection"
@@ -139,4 +141,42 @@ func (db SimpleDataBase) GetCollections() map[string]collection.Collection {
 	db.mutex.Lock()
 	defer db.mutex.Unlock()
 	return db.Collections
+}
+
+func (db *SimpleDataBase) FromFile(fileName string) error {
+	file, err := os.Open(fileName)
+	defer file.Close()
+	if err != nil {
+		return err
+	}
+	reader := io.Reader(file)
+	buffer, err := io.ReadAll(reader)
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(buffer, db)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *SimpleDataBase) ToFile(fileName string) error {
+	file, err := os.Create(fileName)
+	defer file.Close()
+
+	bytes, err := json.Marshal(db)
+	if err != nil {
+		return err
+	}
+
+	writer := io.Writer(file)
+	_, err = writer.Write(bytes)
+	if err != nil {
+		fmt.Println("bad write")
+		return err
+	}
+
+	return nil
 }
