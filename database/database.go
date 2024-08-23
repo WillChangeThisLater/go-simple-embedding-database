@@ -1,6 +1,7 @@
 package database
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -21,6 +22,43 @@ type DataBase interface {
 	Query(collectionId string, query []byte, n_greatest int) []*records.Record
 }
 
+type SimpleDataBase struct {
+	mutex       *sync.Mutex
+	Collections map[string]collection.Collection `json:"collections"`
+}
+
+func MakeDatabase() *SimpleDataBase {
+	db := SimpleDataBase{mutex: &sync.Mutex{}, Collections: make(map[string]collection.Collection)}
+	return &db
+}
+
+func (db SimpleDataBase) MarshalJSON() ([]byte, error) {
+	type Alias SimpleDataBase
+
+	newDB := &struct {
+		Collections map[string]collection.Collection `json:"collections"`
+	}{
+		Collections: db.Collections,
+	}
+	return json.Marshal(newDB)
+}
+
+func (db *SimpleDataBase) UnmarshalJSON(bytes []byte) error {
+	type Alias SimpleDataBase
+
+	newDB := &struct {
+		Collections map[string]collection.Collection `json:"collections"`
+	}{
+		Collections: db.Collections,
+	}
+	if err := json.Unmarshal(bytes, newDB); err != nil {
+		return err
+	}
+	db.Collections = newDB.Collections
+	db.mutex = &sync.Mutex{}
+	return nil
+}
+
 // TODO: if there's a way to refactor this, do it. It's incredibly ugly.
 // Specifically, I don't have a good way to pluck the max N elements
 // from a list
@@ -30,11 +68,6 @@ func (db SimpleDataBase) Query(collectionId string, query []byte, n_greatest int
 		return nil, err
 	}
 	return collection.Query(query, n_greatest)
-}
-
-type SimpleDataBase struct {
-	mutex       *sync.Mutex                      // TODO: leverage this
-	Collections map[string]collection.Collection `json:"collections"`
 }
 
 func (db SimpleDataBase) AddRecord(collectionId string, record *records.Record) error {

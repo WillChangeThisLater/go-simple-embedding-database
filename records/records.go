@@ -1,6 +1,7 @@
 package records
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 
@@ -12,6 +13,44 @@ type Record struct {
 	EmbedderId string    `json:"embedderId"`
 	Blob       []byte    `json:"blob"`
 	Id         string    `json:"id"`
+}
+
+// GPT
+func (r Record) MarshalJSON() ([]byte, error) {
+	// Create a new type alias with the same structure as Record
+	type Alias Record
+
+	// Create a new struct with the new type and an additional field for the custom Blob
+	newRecord := &struct {
+		Blob string `json:"blob"`
+		*Alias
+	}{
+		Blob:  string(r.Blob),
+		Alias: (*Alias)(&r),
+	}
+
+	return json.Marshal(newRecord)
+}
+
+// GPT
+func (r *Record) UnmarshalJSON(bytes []byte) error {
+	// Create a new type alias with the same structure as Record
+	type Alias Record
+
+	// Create a new struct with the new type and an additional field for the custom Blob
+	newRecord := &struct {
+		Blob string `json:"blob"`
+		*Alias
+	}{
+		Alias: (*Alias)(r),
+	}
+
+	if err := json.Unmarshal(bytes, newRecord); err != nil {
+		return err
+	}
+
+	r.Blob = []byte(newRecord.Blob)
+	return nil
 }
 
 // TODO: do the ... thing with the embeddings too

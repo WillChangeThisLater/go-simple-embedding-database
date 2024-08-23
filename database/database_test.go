@@ -1,15 +1,61 @@
 package database
 
 import (
+	"bytes"
+	"encoding/json"
+	"reflect"
 	"sync"
 	"testing"
 
 	collection "go-simple-embedding-database/collection"
 	embedders "go-simple-embedding-database/embedders"
+	records "go-simple-embedding-database/records"
 )
 
 func MockEmbed(blob []byte) ([]float64, error) {
 	return []float64{1.0, 2.0, 3.0, 4.0, 5.0}, nil
+}
+
+func TestJSON(t *testing.T) {
+	db := MakeDatabase()
+
+	embedders.EmbedderRegister["mock-embed"] = MockEmbed
+	collection, err := collection.MakeCollection("test-collection-id", "mock-embed")
+	if err != nil {
+		t.Errorf("Could not create test collection: %v", err)
+	}
+	err = db.AddCollection(collection)
+	if err != nil {
+		t.Errorf("Could not add test collection to database: %v", err)
+	}
+
+	record, err := records.MakeRecord("mock-embed", []byte("blob"), "test-record-id")
+	if err != nil {
+		t.Errorf("Could not create test record: %v", err)
+	}
+	err = db.AddRecord("test-collection-id", record)
+	if err != nil {
+		t.Errorf("Could not add record to database: %v", err)
+	}
+
+	JSONBody, err := json.Marshal(db)
+	if err != nil {
+		t.Errorf("Could not marshal JSON for database: %v", err)
+	}
+	ExpectedJSONBody := []byte("{\"collections\":{\"test-collection-id\":{\"id\":\"test-collection-id\",\"embedderId\":\"mock-embed\",\"embeddings\":{\"test-record-id\":{\"blob\":\"blob\",\"embedding\":[1,2,3,4,5],\"embedderId\":\"mock-embed\",\"id\":\"test-record-id\"}}}}}")
+	if !bytes.Equal(JSONBody, ExpectedJSONBody) {
+		t.Errorf("Failure marshaling JSON: expected %v, got %v", string(ExpectedJSONBody), string(JSONBody))
+	}
+
+	newDB := &SimpleDataBase{}
+	err = json.Unmarshal(JSONBody, newDB)
+	if err != nil {
+		t.Errorf("Could not unmarshal JSON: %v", err)
+	}
+	if !reflect.DeepEqual(newDB, db) {
+		t.Errorf("Unmarshaled DB not equal (expected %v, got %v)", db, newDB)
+	}
+
 }
 
 func TestDatabaseCollectionAPI(t *testing.T) {

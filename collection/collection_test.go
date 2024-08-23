@@ -15,24 +15,26 @@ func MockEmbed(blob []byte) ([]float64, error) {
 	return []float64{1.0, 2.0, 3.0, 4.0, 5.0}, nil
 }
 
-func TestJSONSerializing(t *testing.T) {
+func TestJSON(t *testing.T) {
 	embedders.EmbedderRegister["mock-embedder"] = MockEmbed
 	collection := Collection{Id: "test-json-serializing", EmbedderId: "mock-embedder", Records: make(map[string]records.Record)}
 	JSONBody, err := json.Marshal(collection)
 	if err != nil {
 		t.Errorf("Could not serialize %v", collection)
 	}
-	expectedJSONBody := []byte("{\"id\":\"test-json-serializing\"},\"embedder\":{\"id\":\"mock-embedder\"},\"embeddings\":{}}")
-	if bytes.Equal(JSONBody, expectedJSONBody) {
+	expectedJSONBody := []byte("{\"id\":\"test-json-serializing\",\"embedderId\":\"mock-embedder\",\"embeddings\":{}}")
+	if !bytes.Equal(JSONBody, expectedJSONBody) {
 		t.Errorf("Unexpected JSON: expected %s, got %s", string(expectedJSONBody), string(JSONBody))
 	}
 
-	// TODO: this is failing due to the embedder unmarshaling :/
-	//JSONCollection := Collection{}
-	//err = json.Unmarshal(JSONBody, &JSONCollection)
-	//if err != nil {
-	//	t.Errorf("Could not unmarshal %s: %v", string(JSONBody), err)
-	//}
+	JSONCollection := Collection{}
+	err = json.Unmarshal(JSONBody, &JSONCollection)
+	if err != nil {
+		t.Errorf("Could not unmarshal %s: %v", string(JSONBody), err)
+	}
+	if !reflect.DeepEqual(collection, JSONCollection) {
+		t.Errorf("Unmarshal failed (expected %v, got %v)", collection, JSONCollection)
+	}
 }
 
 func TestMakeCollection(t *testing.T) {
