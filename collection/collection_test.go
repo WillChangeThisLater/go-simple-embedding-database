@@ -11,17 +11,13 @@ import (
 	records "go-simple-embedding-database/records"
 )
 
-type MockEmbedder struct {
-	Id string `json:"id"`
-}
-
-func (e MockEmbedder) Embed(blob []byte) ([]float64, error) {
+func MockEmbed(blob []byte) ([]float64, error) {
 	return []float64{1.0, 2.0, 3.0, 4.0, 5.0}, nil
 }
 
 func TestJSONSerializing(t *testing.T) {
-	embedder := embedders.Embedder(MockEmbedder{Id: "mock-embedder"})
-	collection := Collection{Id: "test-json-serializing", Embedder: embedder, Records: make(map[string]records.Record)}
+	embedders.EmbedderRegister["mock-embedder"] = MockEmbed
+	collection := Collection{Id: "test-json-serializing", EmbedderId: "mock-embedder", Records: make(map[string]records.Record)}
 	JSONBody, err := json.Marshal(collection)
 	if err != nil {
 		t.Errorf("Could not serialize %v", collection)
@@ -39,16 +35,30 @@ func TestJSONSerializing(t *testing.T) {
 	//}
 }
 
+func TestMakeCollection(t *testing.T) {
+	_, err := MakeCollection("should-not-matter", "bad-embedder")
+	if err == nil {
+		t.Errorf("Should not have been able to create embedding with non-existent embedder")
+	}
+
+	embedders.EmbedderRegister["mock-embedder"] = MockEmbed
+	collection, err := MakeCollection("test-collection", "mock-embedder")
+	if !reflect.DeepEqual(collection, &Collection{Id: "test-collection", EmbedderId: "mock-embedder", Records: make(map[string]records.Record)}) {
+		t.Errorf("Collection created by MakeCollection() not equal to expected value")
+	}
+
+}
+
 func TestCollection(t *testing.T) {
-	embedder := embedders.Embedder(MockEmbedder{Id: "mock-embedder"})
-	goodRecord1, err := records.MakeRecord(embedder, []byte("good-record-1"), "good-record-1")
-	goodRecord2, err := records.MakeRecord(embedder, []byte("good-record-2"), "good-record-2")
+	embedders.EmbedderRegister["mock-embedder"] = MockEmbed
+	goodRecord1, err := records.MakeRecord("mock-embedder", []byte("good-record-1"), "good-record-1")
+	goodRecord2, err := records.MakeRecord("mock-embedder", []byte("good-record-2"), "good-record-2")
 
 	// create a collection
 	if err != nil {
 		t.Errorf("Could not create records needed for testing: %v", err)
 	}
-	collection := Collection{Id: "test-collection", Embedder: embedder, Records: make(map[string]records.Record)}
+	collection := Collection{Id: "test-collection", EmbedderId: "mock-embedder", Records: make(map[string]records.Record)}
 
 	// add two embeddings
 	err = collection.AddRecord(goodRecord1)
@@ -91,8 +101,8 @@ func TestCollection(t *testing.T) {
 	}
 
 	// we shouldn't be able to add an record unless the embedders match
-	wrongEmbedder := embedders.Embedder(MockEmbedder{Id: "wrong-embedder"})
-	goodRecordWrongEmbedder, err := records.MakeRecord(wrongEmbedder, []byte("good-embedding-wrong-embedder"), "good-embedding-wrong-embedder")
+	embedders.EmbedderRegister["mock-embedder-mismatched-id"] = MockEmbed
+	goodRecordWrongEmbedder, err := records.MakeRecord("mock-embedder-mismatched-id", []byte("good-embedding-wrong-embedder"), "good-embedding-wrong-embedder")
 	if err != nil {
 		t.Errorf("Could not create record needed for testing: %v", err)
 	}
@@ -142,15 +152,15 @@ func TestCollection(t *testing.T) {
 }
 
 func TestQueryAgainstContrivedEmbeddings(t *testing.T) {
-	embedder := embedders.Embedder(MockEmbedder{Id: "mock-embedder"})
-	collection := Collection{Id: "test-many-embeddings", Embedder: embedder, Records: make(map[string]records.Record)}
+	embedders.EmbedderRegister["mock-embedder"] = MockEmbed
+	collection := Collection{Id: "test-many-embeddings", EmbedderId: "mock-embedder", Records: make(map[string]records.Record)}
 
 	newRecords := make([]records.Record, 0)
 	recordsToGenerate := 50
 	for pageNum := range recordsToGenerate {
 		blob := []byte(fmt.Sprintf("Content for page %d\n", pageNum))
 		id := fmt.Sprintf("/page/%d", pageNum)
-		record, err := records.MakeRecord(embedder, blob, id)
+		record, err := records.MakeRecord("mock-embedder", blob, id)
 		if err != nil {
 			t.Errorf("Could not create record: %v", err)
 		}
@@ -194,16 +204,20 @@ func TestQueryAgainstRealEmbeddings(t *testing.T) {
 	// that the embedder we are calling returns reasonable results.
 	// however, i think it's also reasonable to expect that a semi-decent embedding model
 	// will be able to embed these sentences somewhat appropriately. so i'm leaving the test in
-	hfEmbedder := embedders.HuggingFaceEmbedder{ModelId: "sentence-transformers/all-MiniLM-L12-v2"}
-	_, err := hfEmbedder.Embed([]byte("George Washington was the greatest president of them all"))
+	embedderId := "hugging-face/sentence-transformers/all-MiniLM-L12-v2"
+	embeddingFunc, err := embedders.GetEmbedderFunc(embedderId)
+	if err != nil {
+		t.Errorf("Could not get hugging face embedder: %v", err)
+	}
+	_, err = embeddingFunc([]byte("George Washington was the greatest president of them all"))
 	if err != nil {
 		t.Errorf("Hugging face embedder could not embed blob: %v", err)
 	}
 
-	record1, _ := records.MakeRecord(hfEmbedder, []byte("George Washington might be the greatest president of them all"), "/page/gw")
-	record2, _ := records.MakeRecord(hfEmbedder, []byte("all work and no play makes jack a dull boy all work and no play makes jack a dull boy all work and..."), "/page/shining")
-	record3, _ := records.MakeRecord(hfEmbedder, []byte("What are we having for supper?"), "/page/supper")
-	collection := Collection{Id: "test-cosine-similarity", Embedder: hfEmbedder, Records: make(map[string]records.Record)}
+	record1, _ := records.MakeRecord(embedderId, []byte("George Washington might be the greatest president of them all"), "/page/gw")
+	record2, _ := records.MakeRecord(embedderId, []byte("all work and no play makes jack a dull boy all work and no play makes jack a dull boy all work and..."), "/page/shining")
+	record3, _ := records.MakeRecord(embedderId, []byte("What are we having for supper?"), "/page/supper")
+	collection := Collection{Id: "test-cosine-similarity", EmbedderId: embedderId, Records: make(map[string]records.Record)}
 
 	collection.AddRecord(record1)
 	collection.AddRecord(record2)

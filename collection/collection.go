@@ -3,7 +3,6 @@ package collection
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"slices"
 
 	embedders "go-simple-embedding-database/embedders"
@@ -12,14 +11,18 @@ import (
 )
 
 type Collection struct {
-	Id       string                    `json:"id"`
-	Embedder embedders.Embedder        `json:"embedder"`
-	Records  map[string]records.Record `json:"embeddings"`
+	Id         string                    `json:"id"`
+	EmbedderId string                    `json:"embedderId"`
+	Records    map[string]records.Record `json:"embeddings"`
 }
 
-func MakeCollection(id string, embedder embedders.Embedder) *Collection {
-	collection := Collection{Id: id, Embedder: embedder, Records: make(map[string]records.Record)}
-	return &collection
+func MakeCollection(id string, embedderId string) (*Collection, error) {
+	_, err := embedders.GetEmbedderFunc(embedderId)
+	if err != nil {
+		return nil, err
+	}
+	collection := Collection{Id: id, EmbedderId: embedderId, Records: make(map[string]records.Record)}
+	return &collection, nil
 }
 
 // GPT created this one.
@@ -70,7 +73,7 @@ func MakeCollection(id string, embedder embedders.Embedder) *Collection {
 //}
 
 func (c Collection) String() string {
-	return fmt.Sprintf("Collection{collection.Id: %s, embedder: %v}", c.Id, c.Embedder)
+	return fmt.Sprintf("Collection{collection.Id: %s, embedderId: %v}", c.Id, c.EmbedderId)
 }
 
 func (collection Collection) AddRecord(record *records.Record) error {
@@ -78,8 +81,8 @@ func (collection Collection) AddRecord(record *records.Record) error {
 	if ok {
 		return errors.New(fmt.Sprintf("Record %s already exists in collection %s\n", record.Id, collection.Id))
 	}
-	if !reflect.DeepEqual(collection.Embedder, record.Embedder) {
-		return errors.New(fmt.Sprintf("Record embedder %v != collection embedder %v", record.Embedder, collection.Embedder))
+	if collection.EmbedderId != record.EmbedderId {
+		return errors.New(fmt.Sprintf("Record embedderId %v != collection embedderId %v", record.EmbedderId, collection.EmbedderId))
 	}
 	if record.Embedding == nil {
 		return errors.New(fmt.Sprintf("Embedding for %v is null", record))
@@ -107,8 +110,11 @@ func (collection Collection) GetRecord(recordId string) (*records.Record, error)
 
 func (collection Collection) Query(query []byte, n_greatest int) (*[]records.Record, error) {
 
-	embedder := collection.Embedder
-	queryEmbedding, err := embedder.Embed(query)
+	embed, err := embedders.GetEmbedderFunc(collection.EmbedderId)
+	if err != nil {
+		return nil, err
+	}
+	queryEmbedding, err := embed(query)
 	if err != nil {
 		return nil, err
 	}

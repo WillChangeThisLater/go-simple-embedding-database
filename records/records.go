@@ -8,10 +8,10 @@ import (
 )
 
 type Record struct {
-	Embedding []float64          `json:"embedding"`
-	Embedder  embedders.Embedder `json:"embedder"`
-	Blob      []byte             `json:"blob"`
-	Id        string             `json:"id"`
+	Embedding  []float64 `json:"embedding"`
+	EmbedderId string    `json:"embedderId"`
+	Blob       []byte    `json:"blob"`
+	Id         string    `json:"id"`
 }
 
 // TODO: do the ... thing with the embeddings too
@@ -36,13 +36,18 @@ func (e Record) String() string {
 	}
 	embeddingString += "]"
 
-	return fmt.Sprintf("Embedding{Embedding: %s, Embedder: %s, Blob: %v, Id: %s}", embeddingString, e.Embedder, defaultBlob, e.Id)
+	return fmt.Sprintf("Embedding{Embedding: %s, EmbedderId: %s, Blob: %v, Id: %s}", embeddingString, e.EmbedderId, defaultBlob, e.Id)
 }
 
-func MakeRecord(embedder embedders.Embedder, blob []byte, id string) (*Record, error) {
-	embedding, err := embedder.Embed(blob)
+func MakeRecord(embedderId string, blob []byte, id string) (*Record, error) {
+	embed, err := embedders.GetEmbedderFunc(embedderId)
 	if err != nil {
 		return nil, err
 	}
-	return &Record{Embedding: embedding, Embedder: embedder, Blob: blob, Id: id}, nil
+
+	embedding, err := embed(blob)
+	if err != nil {
+		return nil, err
+	}
+	return &Record{Embedding: embedding, EmbedderId: embedderId, Blob: blob, Id: id}, nil
 }
