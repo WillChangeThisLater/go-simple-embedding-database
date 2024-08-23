@@ -1,9 +1,12 @@
+## What is this?
 A package implementing a very simple, Go-based vector embedding database.
 
 The interface is very similar to ChromaDB.
 
-Here's an example:
+This is a hobby project. If you're looking for a production grade embedding
+database check out Chroma or Pinecone
 
+## Quickstart
 ```go
 package main
 
@@ -82,6 +85,21 @@ func main() {
 }
 ```
 
+## The basics
+A database contains multiple collections
+
+Collections are identified by a unique CollectionID.
+Collections contain 0 or more records.
+Collections expect that all records use the same embedding model (as identified by EmbedderID)
+
+Records are identified by a unique RecordID.
+Records contains a blob of data as well as the embedding for that chunk of data
+Records created via MakeRecord(...) will automatically have the data embedded
+
+Queries are run against collections.
+Queries use cosine similarity
+
+## How do I add an embedding?
 Adding an embedding is really easy. All you need is a function matching the 
 following signature
 
@@ -90,6 +108,7 @@ func (blob []byte) ([]float64, error)
 ```
 
 You can register the function with the embedders module using a embedding id.
+You can then use the function with any collection or record you like.
 For example,
 
 ```go
@@ -116,3 +135,17 @@ func main() {
 	fmt.Printf("Embedding for record %s is %v\n", recordId, record.Embedding)
 }
 ```
+
+## Roadmap
+- Increase test coverage
+- Interface clean up (db.Query return result is a bit ugly, the current interface is a bit verbose, etc.)
+- Better error handling
+- Maybe add features
+  - Default collection to database
+  - Add HTTP routes
+  - Add metadata to records (and filters that allow for sharper queries)
+  - Concurrency support (specifically for adding records to a collection en masse)
+  - Add more embedding models (OpenAI, local models, etc.)
+  - More serialization/deserialization options (writing to/from JSON all the time is not the way)
+  - Auto backup updates to disc
+  - Chunking support
